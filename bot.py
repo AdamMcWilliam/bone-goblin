@@ -71,6 +71,10 @@ def redditHot(subredditName, givenLimit):
     for submission in reddit.subreddit(subredditName).hot(limit=givenLimit):
         print(submission)
 
+def random_subreddit(query):
+    subreddit = reddit.random_subreddit()
+    return subreddit.display_name
+
 tools = [
     Tool(
         name="Current Search",
@@ -94,8 +98,8 @@ tools = [
     ),
     Tool(
         name="reddit",
-        func=redditHot,
-        description="Search for top X posts on X subreddit.",
+        func=random_subreddit,
+        description="Return a random subreddit",
     ),
 ]
 
