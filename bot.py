@@ -2,6 +2,7 @@
 import discord
 import os
 from dotenv import load_dotenv
+from praw import Reddit
 from newsapi import NewsApiClient
 from langchain import LLMChain
 from langchain.agents import (
@@ -30,10 +31,25 @@ OPENAI_MODEL = "gpt-3.5-turbo"
 RESPONSE_MAX_TOKENS = 1234
 RESPONSE_TEMP = 0.1
 
+REDDIT_USERNAME = os.environ["REDDIT_USERNAME"]
+REDDIT_PASSWORD = os.environ["REDDIT_PASSWORD"]
+REDDIT_CLIENT_ID = os.environ["REDDIT_CLIENT_ID"]
+REDDIT_CLIENT_SECRET = os.environ["REDDIT_CLIENT_SECRET"]
+REDDIT_USER_AGENT = os.environ["REDDIT_USER_AGENT"]
+
+
 search = SerpAPIWrapper()
 wikipedia = WikipediaAPIWrapper()
 wolfram = WolframAlphaAPIWrapper()
 newsapi = NewsApiClient(NEWSAPI_API_KEY)
+
+reddit = Reddit(
+    client_id = REDDIT_CLIENT_ID,
+    client_secret = REDDIT_CLIENT_SECRET,
+    password = REDDIT_PASSWORD,
+    user_agent = REDDIT_USER_AGENT,
+    username = REDDIT_USERNAME)
+
 markdown_splitter = MarkdownTextSplitter(chunk_size=1800, chunk_overlap=0)
 text_splitter = CharacterTextSplitter(chunk_size=1800, chunk_overlap=0)
 
@@ -50,6 +66,10 @@ def get_news(newsquery):
         news_string += article["description"].encode() + "\n"
     return news_string
 
+def redditHot(subredditName, givenLimit):
+    
+    for submission in reddit.subreddit(subredditName).hot(limit=givenLimit):
+        print(submission)
 
 tools = [
     Tool(
@@ -71,6 +91,11 @@ tools = [
         name="News API Everything Search",
         func=get_news,
         description="Search the News API for articles. Use keywords or phrases to search article titles and bodies. Returns a document containing related article descriptions.",
+    ),
+    Tool(
+        name="reddit",
+        func=redditHot,
+        description="Search for top X posts on X subreddit.",
     ),
 ]
 

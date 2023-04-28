@@ -1,6 +1,19 @@
+################################################################################
+### DEFAULTS
+################################################################################
+
 OPENAI_API_KEY=
 DISCORD_SECRET_KEY=
 NEWSAPI_API_KEY=
 WOLFRAM_ALPHA_APPID=
-SERP_API_API_KEY= 
+SERP_API_API_KEY=
 
+################################################################################
+### REDDIT
+################################################################################
+
+REDDIT_USERNAME=
+REDDIT_PASSWORD=
+REDDIT_CLIENT_ID=
+REDDIT_CLIENT_SECRET=
+REDDIT_USER_AGENT=
