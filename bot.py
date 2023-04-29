@@ -1,8 +1,8 @@
 # Importing libraries
 import discord
 import os
+import asyncpraw
 from dotenv import load_dotenv
-from praw import Reddit
 from newsapi import NewsApiClient
 from langchain import LLMChain
 from langchain.agents import (
@@ -43,7 +43,7 @@ wikipedia = WikipediaAPIWrapper()
 wolfram = WolframAlphaAPIWrapper()
 newsapi = NewsApiClient(NEWSAPI_API_KEY)
 
-reddit = Reddit(
+reddit = asyncpraw.Reddit(
     client_id = REDDIT_CLIENT_ID,
     client_secret = REDDIT_CLIENT_SECRET,
     password = REDDIT_PASSWORD,
@@ -66,13 +66,17 @@ def get_news(newsquery):
         news_string += article["description"].encode() + "\n"
     return news_string
 
-def redditHot(subredditName, givenLimit):
-    
-    for submission in reddit.subreddit(subredditName).hot(limit=givenLimit):
-        print(submission)
+async def redditHot(subredditName, givenLimit):
+    async for submission in reddit.subreddit(subredditName).hot(limit=givenLimit):
+        return await (submission.title)
+    return await ("No posts found")
 
-def random_subreddit(query):
-    subreddit = reddit.random_subreddit()
+async def parsing_redditHot(string):
+    a, b = string.split(",")
+    return await redditHot(str(a), int(b))
+
+async def random_subreddit(query):
+    subreddit = await reddit.random_subreddit()
     return subreddit.display_name
 
 tools = [
@@ -97,9 +101,14 @@ tools = [
         description="Search the News API for articles. Use keywords or phrases to search article titles and bodies. Returns a document containing related article descriptions.",
     ),
     Tool(
-        name="reddit",
+        name="random reddit",
         func=random_subreddit,
         description="Return a random subreddit",
+    ),
+        Tool(
+        name="top reddit subreddit posts",
+        func=parsing_redditHot,
+        description="Providing a subreddit name and number of posts requested in a comma separated string returns the top posts of that subreddit.",
     ),
 ]
 
