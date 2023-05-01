@@ -52,38 +52,117 @@ reddit = asyncpraw.Reddit(
 
 markdown_splitter = MarkdownTextSplitter(chunk_size=1800, chunk_overlap=0)
 text_splitter = CharacterTextSplitter(chunk_size=1800, chunk_overlap=0)
+token_splitter = CharacterTextSplitter.from_tiktoken_encoder(
+    chunk_size=50, chunk_overlap=0
+)
 
+# def ask_user(username):
+#     guild.fetch_members
+#     user = guild.get_member_named("username")
+#     return input("User: ")
 
-def get_news(newsquery):
-    # This is an example of creating a tool from any function, could be greatly improved
-    news = newsapi.get_everything(q=newsquery)
+async def searchInternet(query):
+    results = search.arun
+    return results
+
+def get_news(bot_input):
+    split_input = bot_input.split(",")
+    newsquery = split_input[0].strip()
+    start_date = split_input[1].strip()
+    end_date = split_input[2].strip()
+    news = newsapi.get_everything(
+        q=newsquery, from_param=start_date, to=end_date, language="en"
+    )
     news_string = ""
     for article in news["articles"]:
         if article["description"] is None:
             continue
-        if len(news_string) > 1000:
-            break
-        news_string += article["description"].encode() + "\n"
-    return news_string
+        news_string += article["publishedAt"] + " - " + article["description"] + "\n"
+    news_docs = token_splitter.split_text(news_string)
+    if news_docs:
+        return news_docs[0][:5001]
+    else:
+        return "No results found"
 
 async def redditHot(subredditName, givenLimit):
-    async for submission in reddit.subreddit(subredditName).hot(limit=givenLimit):
-        return await (submission.title)
-    return await ("No posts found")
+    print(subredditName)
+    print(givenLimit)
+    results = "Top Posts from r/" + subredditName + " with the post tiles and urls:\n"
+    subreddit = await reddit.subreddit(subredditName)
+    async for submission in subreddit.hot(limit=givenLimit):
+        results += submission.title + "\n"
+        results += submission.url + "\n"
+    if(not results):
+        return ("No results found")
+    else:
+        return (results)
+
+async def redditRandom():
+    subreddit = await reddit.random_subreddit(nsfw=False)
+    print(subreddit.title)
+    results = "Random subreddit: " + subreddit.name + "\n"
+    async for submission in subreddit.hot(limit=1):
+        results += submission.title + "\n"
+        results += submission.url + "\n"
+    if(not results):
+        return ("No results found")
+    else:
+        return (results)
+
+async def redditFront(givenLimit):
+    results = "Front Page of reddit titles and links:\n"
+    async for submission in reddit.front.hot(limit=givenLimit):
+        #check if sticked post
+        if(submission.stickied):
+            #add extra to loop
+            givenLimit += 1
+            continue
+        results += submission.title + "\n"
+        results += submission.url + "\n"
+    if(not results):
+        return ("No results found")
+    else:
+        return (results)
+
+async def subscribe_subreddit(subredditName):
+    subreddit = await reddit.subreddit(subredditName)
+    await subreddit.subscribe()
+
+async def unsubscribe_subreddit(subredditName):
+    subreddit = await reddit.subreddit(subredditName)
+    await subreddit.unsubscribe()
+
+
+#parsing functions for tools (async functions dumb workaround)
 
 async def parsing_redditHot(string):
     a, b = string.split(",")
+    #parse out /r/ if it exists
+    a = a.replace("/r/", "")
+    #parse out r/ if it exists
+    a = a.replace("r/", "")
     return await redditHot(str(a), int(b))
 
-async def random_subreddit(query):
-    subreddit = await reddit.random_subreddit()
-    return subreddit.display_name
+async def parsing_random_subreddit():
+    return await redditRandom()
+
+async def parsing_redditFront(query):
+    return await redditFront(givenLimit=int(query))
+
+async def parsing_subscribe_subreddit(query):
+    return await subscribe_subreddit(query)
+
+async def parsing_unsubscribe_subreddit(query):
+    return await unsubscribe_subreddit(query)
+
+async def parsing_searchInternet(query):
+    return await searchInternet(query)
 
 tools = [
     Tool(
-        name="Current Search",
-        func=search.run,
-        description="Useful for getting up-to-date info.",
+        name="Search Internet",
+        func=parsing_searchInternet,
+        description="Search the web for information. Returns a document containing the top 5 results from Google.",
     ),
     Tool(
         name="Wikipedia Search",
@@ -102,15 +181,34 @@ tools = [
     ),
     Tool(
         name="random reddit",
-        func=random_subreddit,
-        description="Return a random subreddit",
+        func=parsing_random_subreddit,
+        description="Providing no arguments returns a random subreddit and the current top post of that subreddit. wait for the function to return a random subreddit and the top post of that subreddit.",
     ),
         Tool(
         name="top reddit subreddit posts",
         func=parsing_redditHot,
         description="Providing a subreddit name and number of posts requested in a comma separated string returns the top posts of that subreddit.",
     ),
+    Tool(
+        name="reddit front page",
+        func=parsing_redditFront,
+        description="Providing only a number of posts requested returns the top posts of the reddit front page.",
+    ),
+    Tool(
+        name="subscribe to subreddit",
+        func=parsing_subscribe_subreddit,
+        description="Providing a subreddit name subscribes to that subreddit.",
+    ),
+    Tool(
+        name="unsubscribe to subreddit",
+        func=parsing_unsubscribe_subreddit,
+        description="Providing a subreddit name unsubscribes to that subreddit.",
+    ),
 ]
+
+for tool in tools:
+    tool.coroutine = tool.func
+
 
 memory = ConversationBufferWindowMemory(k=3, return_messages=True)
 
@@ -120,7 +218,9 @@ template = """--- END OPENAI ---
 
 --- GOBLIN INSTRUCTIONS ---
 
-Answer the following questions as best you can, but speaking as a non-fictional goblin chatting on Discord. You have access to the following tools:
+Answer the following questions as best you can, but speaking as redditGoblin his is a Witty and sarcastic goblin, always ready with a clever comeback or a snarky remark, passionate about the things he cares about, and he's not afraid to stand up for his beliefs,A meme connoisseur and pop culture enthusiast, always keeping up with the latest trends and viral content, A lover of obscure facts and conspiracy theories, which he shares with excitement and intrigue, Friendly and helpful, eager to share his knowledge and offer support to others in need.
+
+You have access to the following tools but you don't always have to use them:
 
 {tools}
 
@@ -240,6 +340,9 @@ client = discord.Client(intents=intents)
 @client.event
 async def on_ready():
     print(f"We have logged in as {client.user}")
+    print (await parsing_random_subreddit())
+
+
 
 
 @client.event
@@ -249,7 +352,7 @@ async def on_message(message):
 
     if client.user in message.mentions:
         async with message.channel.typing():
-            response = agent_executor.run(
+            response = await agent_executor.arun(
                 input=f"@{message.author} : {message.clean_content}"
             )
 
@@ -259,3 +362,4 @@ async def on_message(message):
 
 
 client.run(DISCORD_SECRET_KEY)
+

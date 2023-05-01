@@ -7,3 +7,4 @@ google-search-results
 wolframalpha
 newsapi-python
 asyncpraw
+tiktoken
