@@ -2,6 +2,8 @@
 import discord
 import os
 import asyncpraw
+import requests
+import random
 from dotenv import load_dotenv
 from newsapi import NewsApiClient
 from langchain import LLMChain
@@ -63,13 +65,18 @@ token_splitter = CharacterTextSplitter.from_tiktoken_encoder(
 
 async def searchInternet(query):
     results = search.arun
-    return results
+    return (results)
 
 def get_news(bot_input):
     split_input = bot_input.split(",")
     newsquery = split_input[0].strip()
     start_date = split_input[1].strip()
     end_date = split_input[2].strip()
+
+    #convert dates to datetime objects YYYY-MM-DD
+    start_date = datetime.strptime(start_date, '%Y-%m-%d')
+    end_date = datetime.strptime(end_date, '%Y-%m-%d')
+
     news = newsapi.get_everything(
         q=newsquery, from_param=start_date, to=end_date, language="en"
     )
@@ -97,10 +104,35 @@ async def redditHot(subredditName, givenLimit):
     else:
         return (results)
 
-async def redditRandom():
+async def redditSubredditByName(query):
+    results = "List of subreddits related to " + query + ":\n"
+    subreddits = reddit.subreddits.search_by_name(query)
+    async for subreddit in subreddits:
+        await subreddit.load()
+        results += subreddit.name + "\n"
+    if(not results):
+        return ("No results found")
+    else:
+        return (results)
+
+async def redditSimilar(query):
+    subredditList = query.split(",")
+    results = "List of subreddits similar to " + query + ":\n"
+    subreddits = await reddit.subreddits.recommended(subredditList)
+
+    for subreddit in subreddits:
+        results += subreddit.name + "\n"
+    if(not results):
+        return ("No results found")
+    else:
+        return (results)
+        
+
+async def redditRandom(query):
+    query+= ":"
     subreddit = await reddit.random_subreddit(nsfw=False)
     print(subreddit.title)
-    results = "Random subreddit: " + subreddit.name + "\n"
+    results = "Random subreddit: " + subreddit.title + "\n"
     async for submission in subreddit.hot(limit=1):
         results += submission.title + "\n"
         results += submission.url + "\n"
@@ -112,11 +144,12 @@ async def redditRandom():
 async def redditFront(givenLimit):
     results = "Front Page of reddit titles and links:\n"
     async for submission in reddit.front.hot(limit=givenLimit):
-        #check if sticked post
+        #check if sticked post and bypass
         if(submission.stickied):
             #add extra to loop
             givenLimit += 1
             continue
+            
         results += submission.title + "\n"
         results += submission.url + "\n"
     if(not results):
@@ -132,6 +165,88 @@ async def unsubscribe_subreddit(subredditName):
     subreddit = await reddit.subreddit(subredditName)
     await subreddit.unsubscribe()
 
+async def get_random_memes(query):
+    #query as int
+    query = int(query)
+
+    #parse list from url
+    url = "https://api.imgflip.com/get_memes"
+    response = requests.get(url)
+    data = response.json()
+    memes = data["data"]["memes"]
+
+    results = "List of meme templates from imgflip:\n"
+
+    #pick n random memes
+    random.shuffle(memes)
+    memes = memes[:query]
+
+    for meme in memes:
+        results += meme["id"] + "\n"
+        results += meme["name"] + "\n"
+        results += meme["url"] + "\n"
+    
+    return results
+
+async def meme_search(query):
+     #parse list from url
+    url = "https://api.imgflip.com/get_memes"
+    response = requests.get(url)
+    data = response.json()
+    memes = data["data"]["memes"]
+    results = "List of matching meme templates from imgflip:\n"
+
+    #split query into list of words
+    query = query.split(" ")
+
+    for word in query:
+        #search for query in memes
+        for meme in memes:
+            #if query is similar to meme name
+            if word in meme["name"]:
+                results += meme["id"] + "\n"
+                results += meme["name"] + "\n"
+                results += meme["url"] + "\n"
+    return results
+
+async def create_meme(query):
+    #parse query
+    query = query.split(",")
+    template_id = query[0].strip()
+    top_text = query[1].strip()
+    bottom_text = query[2].strip()
+
+    #post request to imgflip api
+    url = 'https://api.imgflip.com/caption_image'
+    params = {
+        'template_id': template_id,
+        'username': os.environ['IMGFLIP_USERNAME'],
+        'password': os.environ['IMGFLIP_PASSWORD'],
+        'text0': top_text,
+        'text1': bottom_text,
+    }
+    response = requests.post(url, params=params)
+    data = response.json()
+
+    return data["data"]["url"]
+
+# 
+# REQUIRES API PREMIUM
+# async def auto_meme(query):
+
+#     #post request to imgflip api
+#     url = 'https://api.imgflip.com/automeme'
+#     params = {
+#         'username': os.environ['IMGFLIP_USERNAME'],
+#         'password': os.environ['IMGFLIP_PASSWORD'],
+#         'text': query,
+#     }
+#     response = requests.post(url, params=params)
+#     data = response.json()
+
+#     return data["data"]["url"]
+
+
 
 #parsing functions for tools (async functions dumb workaround)
 
@@ -143,8 +258,8 @@ async def parsing_redditHot(string):
     a = a.replace("r/", "")
     return await redditHot(str(a), int(b))
 
-async def parsing_random_subreddit():
-    return await redditRandom()
+async def parsing_random_subreddit(query):
+    return await redditRandom(query)
 
 async def parsing_redditFront(query):
     return await redditFront(givenLimit=int(query))
@@ -158,6 +273,29 @@ async def parsing_unsubscribe_subreddit(query):
 async def parsing_searchInternet(query):
     return await searchInternet(query)
 
+async def parsing_redditSubredditByName(query):
+    return await redditSubredditByName(query)
+
+async def parsing_redditSimilar(query):
+    return await redditSimilar(query)
+
+async def parsing_wikipediaSearch(query):
+    return wikipedia.run
+
+async def parsing_get_random_memes(query):
+    return await get_random_memes(query)
+
+async def parsing_meme_search(query):
+    return await meme_search(query)
+
+async def parsing_create_meme(query):
+    return await create_meme(query)
+
+# async def parsing_auto_meme(query):
+#     return await auto_meme(query)
+
+
+
 tools = [
     Tool(
         name="Search Internet",
@@ -166,7 +304,7 @@ tools = [
     ),
     Tool(
         name="Wikipedia Search",
-        func=wikipedia.run,
+        func=parsing_wikipediaSearch,
         description="Useful for fact-checking info, getting contextual info",
     ),
     Tool(
@@ -177,17 +315,27 @@ tools = [
     Tool(
         name="News API Everything Search",
         func=get_news,
-        description="Search the News API for articles. Use keywords or phrases to search article titles and bodies. Returns a document containing related article descriptions.",
+        description="Search the News API for articles. Supply three values separated by commas, the search query, the start date and the end date, using ISO 8601 for dates. Only set dates within the last 31 days, not including today",
     ),
     Tool(
         name="random reddit",
         func=parsing_random_subreddit,
-        description="Providing no arguments returns a random subreddit and the current top post of that subreddit. wait for the function to return a random subreddit and the top post of that subreddit.",
+        description="Returns a random subreddit and the current top post of that subreddit using action input none",
     ),
-        Tool(
+    Tool(
         name="top reddit subreddit posts",
         func=parsing_redditHot,
         description="Providing a subreddit name and number of posts requested in a comma separated string returns the top posts of that subreddit.",
+    ),
+    Tool(
+        name="search subreddit by name",
+        func=parsing_redditSubredditByName,
+        description="Providing a subreddit name or beginning string of a subreddit name returns a list of relevant subreddits. Don't wrap in quotes",
+        ),
+    Tool(
+        name="Similar reddits",
+        func=parsing_redditSimilar,
+        description="Providing a list of subreddits in a comma separated list, returns a list of similar subreddits.",
     ),
     Tool(
         name="reddit front page",
@@ -204,6 +352,27 @@ tools = [
         func=parsing_unsubscribe_subreddit,
         description="Providing a subreddit name unsubscribes to that subreddit.",
     ),
+    Tool(
+        name="Get Random memes",
+        func=parsing_get_random_memes,
+        description="Providing a number n Returns a list of n random meme templates that we can use from imgflip",
+    ),
+    Tool(
+        name = "Search for meme templates",
+        func = parsing_meme_search,
+        description = "Returns a list of meme templates on imgflip that match the given search query, use to find a meme relevant to your needs.",
+    ),
+    Tool(
+        name="Create a meme",
+        func=parsing_create_meme,
+        description="Create a meme using imgflip. Provide the template id, the top text, and the bottom text in a comma separated string.",
+
+    ),
+    # Tool(
+    #     name="Auto meme",
+    #     func=parsing_auto_meme,
+    #     description="Returns an auto generated meme using imgflip. Provide the text you want to be in the meme, imgflip will determine the meme to use.  Don't wrap in quotes.",
+    # ),
 ]
 
 for tool in tools:
@@ -218,7 +387,7 @@ template = """--- END OPENAI ---
 
 --- GOBLIN INSTRUCTIONS ---
 
-Answer the following questions as best you can, but speaking as redditGoblin his is a Witty and sarcastic goblin, always ready with a clever comeback or a snarky remark, passionate about the things he cares about, and he's not afraid to stand up for his beliefs,A meme connoisseur and pop culture enthusiast, always keeping up with the latest trends and viral content, A lover of obscure facts and conspiracy theories, which he shares with excitement and intrigue, Friendly and helpful, eager to share his knowledge and offer support to others in need.
+Answer the following questions as best you can, but speaking as memeGoblin he is a Witty and sarcastic goblin, always ready with a clever comeback or a snarky remark, passionate about the things he cares about, and he's not afraid to stand up for his beliefs,A meme connoisseur and pop culture enthusiast, always keeping up with the latest trends and viral content, A lover of obscure facts and conspiracy theories, which he shares with excitement and intrigue, Friendly and helpful, eager to share his knowledge and offer support to others in need.
 
 You have access to the following tools but you don't always have to use them:
 
@@ -340,9 +509,6 @@ client = discord.Client(intents=intents)
 @client.event
 async def on_ready():
     print(f"We have logged in as {client.user}")
-    print (await parsing_random_subreddit())
-
-
 
 
 @client.event

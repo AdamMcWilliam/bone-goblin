@@ -8,3 +8,4 @@ wolframalpha
 newsapi-python
 asyncpraw
 tiktoken
+requests
